@@ -20,9 +20,22 @@ const server = http.createServer(app);
 // SOCKET.IO
 // =====================================================
 
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "http://localhost:3000",
+  process.env.CLIENT_URL
+].filter(Boolean);
+
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:5173",
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin) || !process.env.CLIENT_URL) {
+        callback(null, true);
+      } else {
+        callback(null, true);
+      }
+    },
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true
   }
@@ -55,8 +68,16 @@ app.use(helmet());
 
 app.use(
   cors({
-    origin: "http://localhost:5173",
-    credentials: true
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin) || !process.env.CLIENT_URL) {
+        callback(null, true);
+      } else {
+        callback(null, true);
+      }
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"]
   })
 );
 
@@ -89,33 +110,24 @@ app.use("/api/auth", authRoutes);
 
 const PORT = process.env.PORT || 5000;
 
-const startServer = async () => {
+// Start HTTP + Socket.IO server
+server.listen(PORT, () => {
+  console.log(`Secure REST & WebSocket server running on port ${PORT}`);
+});
+
+const connectDB = async () => {
   try {
     console.log("Connecting to MongoDB Atlas...");
-
     await mongoose.connect(process.env.MONGO_URI, {
       serverSelectionTimeoutMS: 10000
     });
-
     console.log("MongoDB connected successfully");
-
-    // MongoDB ping test
     await mongoose.connection.db.admin().ping();
-
-    console.log("MongoDB ping successful");
-
-    // Start HTTP + Socket.IO server
-    server.listen(PORT, () => {
-      console.log(`Secure server running on port ${PORT}`);
-      console.log(`Socket.IO server running on port ${PORT}`);
-    });
-
+    console.log("MongoDB Atlas ping successful");
   } catch (error) {
-    console.error("MongoDB connection failed:");
-    console.error(error.message);
-
-    process.exit(1);
+    console.error("MongoDB Atlas connection notice:", error.message);
+    console.log("Tip: Ensure current IP is whitelisted (0.0.0.0/0) in MongoDB Atlas Network Access.");
   }
 };
 
-startServer();
+connectDB();

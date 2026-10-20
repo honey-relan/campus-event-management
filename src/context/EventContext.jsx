@@ -4,7 +4,7 @@ import { socket } from "../socket";
 
 export const EventContext = createContext();
 
-const API_BASE = "http://localhost:5000/api";
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 export const EventProvider = ({ children }) => {
   // State for all campus events
@@ -82,6 +82,11 @@ export const EventProvider = ({ children }) => {
       setIsSocketConnected(false);
     };
 
+    const onConnectError = (err) => {
+      console.log("⚠️ WebSocket connection notice:", err.message);
+      setIsSocketConnected(false);
+    };
+
     // Socket Event: eventCreated (Real-time Broadcast)
     const onEventCreated = (newEvent) => {
       console.log("⚡ Real-time eventCreated received:", newEvent);
@@ -141,18 +146,22 @@ export const EventProvider = ({ children }) => {
     // Attach listeners
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
+    socket.on("connect_error", onConnectError);
     socket.on("eventCreated", onEventCreated);
     socket.on("eventUpdated", onEventUpdated);
     socket.on("eventDeleted", onEventDeleted);
 
     if (socket.connected) {
       setIsSocketConnected(true);
+    } else {
+      socket.connect();
     }
 
     // Cleanup listeners on unmount
     return () => {
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
+      socket.off("connect_error", onConnectError);
       socket.off("eventCreated", onEventCreated);
       socket.off("eventUpdated", onEventUpdated);
       socket.off("eventDeleted", onEventDeleted);
@@ -300,7 +309,7 @@ export const EventProvider = ({ children }) => {
         return { success: false, message: data.message || "Invalid credentials" };
       }
     } catch (err) {
-      return { success: false, message: "Backend server is unreachable on port 5000" };
+      return { success: false, message: "Backend server is unreachable. Please verify server status." };
     }
   };
 
@@ -322,7 +331,7 @@ export const EventProvider = ({ children }) => {
         return { success: false, message: data.message || "Registration failed" };
       }
     } catch (err) {
-      return { success: false, message: "Backend server is unreachable on port 5000" };
+      return { success: false, message: "Backend server is unreachable. Please verify server status." };
     }
   };
 
