@@ -1,5 +1,8 @@
+
 const express = require("express");
 const Event = require("../models/Event");
+const User = require("../models/User");
+const sendEmail = require("../utils/emailService");
 
 const {
   body,
@@ -8,41 +11,58 @@ const {
 
 const router = express.Router();
 
-// ==========================================
-// CREATE EVENT
-// ==========================================
+// Send notification emails to all registered users
+const notifyAllUsers = async (event, action) => {
+  try {
+    const users = await User.find({}, "email");
 
+    const subject = `Campus Events - ${action}: ${event.name || event.title}`;
+
+    const message = `
+Hello,
+
+${action}
+
+Event: ${event.name || event.title}
+Category: ${event.category}
+Date: ${event.date}
+Time: ${event.time || "Not specified"}
+Venue: ${event.venue}
+Organizer: ${event.organizer}
+Description: ${event.description}
+
+Visit Campus Event Management to see more details.
+
+Regards,
+Campus Event Management Team
+`;
+
+    const results = await Promise.allSettled(
+      users
+        .filter(user => user.email)
+        .map(user => sendEmail(user.email, subject, message))
+    );
+
+    console.log(
+      `Notification attempts completed for ${results.length} users.`
+    );
+  } catch (error) {
+    console.error("Email notification error:", error.message);
+  }
+};
+
+// CREATE EVENT
 router.post(
   "/",
-
   [
-    body("name")
-      .notEmpty()
-      .withMessage("Event name is required"),
-
-    body("category")
-      .notEmpty()
-      .withMessage("Category is required"),
-
-    body("date")
-      .notEmpty()
-      .withMessage("Date is required"),
-
-    body("venue")
-      .notEmpty()
-      .withMessage("Venue is required"),
-
-    body("organizer")
-      .notEmpty()
-      .withMessage("Organizer is required"),
-
-    body("description")
-      .notEmpty()
-      .withMessage("Description is required")
+    body("name").notEmpty().withMessage("Event name is required"),
+    body("category").notEmpty().withMessage("Category is required"),
+    body("date").notEmpty().withMessage("Date is required"),
+    body("venue").notEmpty().withMessage("Venue is required"),
+    body("organizer").notEmpty().withMessage("Organizer is required"),
+    body("description").notEmpty().withMessage("Description is required")
   ],
-
   async (req, res) => {
-
     const errors = validationResult(req);
 
     if (!errors.isEmpty()) {
@@ -53,219 +73,139 @@ router.post(
     }
 
     try {
+      const event = await Event.create(req.body);
 
-      const event = await Event.create(
-        req.body
-      );
-
-      // REAL-TIME EVENT
       const io = req.app.get("io");
 
       if (io) {
-        io.emit(
-          "eventCreated",
-          event
-        );
+        io.emit("eventCreated", event);
       }
 
-      res.status(201).json({
-        message:
-          "Event created successfully",
+      // Send emails without delaying the API response
+      notifyAllUsers(event, "New Event Added");
 
+      res.status(201).json({
+        message: "Event created successfully",
         event
       });
-
     } catch (error) {
-
-      console.error(
-        "Create event error:",
-        error.message
-      );
+      console.error("Create event error:", error.message);
 
       res.status(500).json({
-        message:
-          "Error creating event",
-
-        error:
-          error.message
+        message: "Error creating event",
+        error: error.message
       });
     }
   }
 );
 
-// ==========================================
 // GET ALL EVENTS
-// ==========================================
-
 router.get("/", async (req, res) => {
-
   try {
-
-    const events =
-      await Event.find().sort({
-        createdAt: -1
-      });
+    const events = await Event.find().sort({
+      createdAt: -1
+    });
 
     res.status(200).json(events);
-
   } catch (error) {
-
-    console.error(
-      "Fetch events error:",
-      error.message
-    );
+    console.error("Fetch events error:", error.message);
 
     res.status(500).json({
-      message:
-        "Error fetching events",
-
-      error:
-        error.message
+      message: "Error fetching events",
+      error: error.message
     });
   }
 });
 
-// ==========================================
 // GET EVENT BY ID
-// ==========================================
-
 router.get("/:id", async (req, res) => {
-
   try {
-
-    const event =
-      await Event.findById(
-        req.params.id
-      );
+    const event = await Event.findById(req.params.id);
 
     if (!event) {
       return res.status(404).json({
-        message:
-          "Event not found"
+        message: "Event not found"
       });
     }
 
     res.status(200).json(event);
-
   } catch (error) {
-
     res.status(400).json({
-      message:
-        "Invalid event ID"
+      message: "Invalid event ID"
     });
   }
 });
 
-// ==========================================
 // UPDATE EVENT
-// ==========================================
-
 router.put("/:id", async (req, res) => {
-
   try {
-
-    const event =
-      await Event.findByIdAndUpdate(
-        req.params.id,
-        req.body,
-        {
-          new: true,
-          runValidators: true
-        }
-      );
+    const event = await Event.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      {
+        new: true,
+        runValidators: true
+      }
+    );
 
     if (!event) {
       return res.status(404).json({
-        message:
-          "Event not found"
+        message: "Event not found"
       });
     }
 
-    // REAL-TIME UPDATE
     const io = req.app.get("io");
 
     if (io) {
-      io.emit(
-        "eventUpdated",
-        event
-      );
+      io.emit("eventUpdated", event);
     }
 
-    res.status(200).json({
-      message:
-        "Event updated successfully",
+    notifyAllUsers(event, "Event Updated");
 
+    res.status(200).json({
+      message: "Event updated successfully",
       event
     });
-
   } catch (error) {
-
-    console.error(
-      "Update event error:",
-      error.message
-    );
+    console.error("Update event error:", error.message);
 
     res.status(400).json({
-      message:
-        "Error updating event",
-
-      error:
-        error.message
+      message: "Error updating event",
+      error: error.message
     });
   }
 });
 
-// ==========================================
 // DELETE EVENT
-// ==========================================
-
 router.delete("/:id", async (req, res) => {
-
   try {
-
-    const event =
-      await Event.findByIdAndDelete(
-        req.params.id
-      );
+    const event = await Event.findByIdAndDelete(req.params.id);
 
     if (!event) {
       return res.status(404).json({
-        message:
-          "Event not found"
+        message: "Event not found"
       });
     }
 
-    // REAL-TIME DELETE
     const io = req.app.get("io");
 
     if (io) {
-      io.emit(
-        "eventDeleted",
-        {
-          id:
-            event._id.toString()
-        }
-      );
+      io.emit("eventDeleted", {
+        id: event._id.toString()
+      });
     }
 
+    notifyAllUsers(event, "Event Cancelled");
+
     res.status(200).json({
-      message:
-        "Event deleted successfully"
+      message: "Event deleted successfully"
     });
-
   } catch (error) {
-
-    console.error(
-      "Delete event error:",
-      error.message
-    );
+    console.error("Delete event error:", error.message);
 
     res.status(400).json({
-      message:
-        "Error deleting event",
-
-      error:
-        error.message
+      message: "Error deleting event",
+      error: error.message
     });
   }
 });
