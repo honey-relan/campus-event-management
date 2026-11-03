@@ -1,3 +1,4 @@
+
 const express = require("express");
 const mongoose = require("mongoose");
 const dotenv = require("dotenv");
@@ -9,16 +10,7 @@ const { Server } = require("socket.io");
 dotenv.config();
 
 const app = express();
-
-// =====================================================
-// CREATE HTTP SERVER
-// =====================================================
-
 const server = http.createServer(app);
-
-// =====================================================
-// SOCKET.IO
-// =====================================================
 
 const allowedOrigins = [
   "http://localhost:5173",
@@ -27,27 +19,20 @@ const allowedOrigins = [
   process.env.CLIENT_URL
 ].filter(Boolean);
 
+// Socket.IO setup
 const io = new Server(server, {
   cors: {
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin) || !process.env.CLIENT_URL) {
-        callback(null, true);
-      } else {
-        callback(null, true);
-      }
+      callback(null, true);
     },
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true
   }
 });
 
-// Make Socket.IO available inside routes
 app.set("io", io);
 
-// =====================================================
-// SOCKET.IO CONNECTION
-// =====================================================
-
+// Socket.IO connection
 io.on("connection", (socket) => {
   console.log("Client connected:", socket.id);
 
@@ -60,33 +45,21 @@ io.on("connection", (socket) => {
   });
 });
 
-// =====================================================
-// MIDDLEWARE
-// =====================================================
-
+// Middleware
 app.use(helmet());
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin) || !process.env.CLIENT_URL) {
-        callback(null, true);
-      } else {
-        callback(null, true);
-      }
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"]
-  })
-);
+app.use(cors({
+  origin: (origin, callback) => {
+    callback(null, true);
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
 
 app.use(express.json());
 
-// =====================================================
-// TEST ROUTE
-// =====================================================
-
+// Health check
 app.get("/", (req, res) => {
   res.json({
     message: "Secure Campus Event REST API is running",
@@ -94,40 +67,51 @@ app.get("/", (req, res) => {
   });
 });
 
-// =====================================================
-// ROUTES
-// =====================================================
-
+// Import routes
 const eventRoutes = require("./routes/eventRoutes");
 const authRoutes = require("./routes/authRoutes");
 
+// Validate imported routers
+console.log("Event routes type:", typeof eventRoutes);
+console.log("Auth routes type:", typeof authRoutes);
+
+if (typeof eventRoutes !== "function") {
+  throw new Error("eventRoutes is not a valid Express router. Check routes/eventRoutes.js export.");
+}
+
+if (typeof authRoutes !== "function") {
+  throw new Error("authRoutes is not a valid Express router. Check routes/authRoutes.js export.");
+}
+
+// Register routes
 app.use("/api/events", eventRoutes);
 app.use("/api/auth", authRoutes);
 
-// =====================================================
-// MONGODB CONNECTION
-// =====================================================
-
+// MongoDB connection
 const PORT = process.env.PORT || 5000;
-
-// Start HTTP + Socket.IO server
-server.listen(PORT, () => {
-  console.log(`Secure REST & WebSocket server running on port ${PORT}`);
-});
 
 const connectDB = async () => {
   try {
     console.log("Connecting to MongoDB Atlas...");
+
     await mongoose.connect(process.env.MONGO_URI, {
       serverSelectionTimeoutMS: 10000
     });
+
     console.log("MongoDB connected successfully");
+
     await mongoose.connection.db.admin().ping();
+
     console.log("MongoDB Atlas ping successful");
+
   } catch (error) {
-    console.error("MongoDB Atlas connection notice:", error.message);
-    console.log("Tip: Ensure current IP is whitelisted (0.0.0.0/0) in MongoDB Atlas Network Access.");
+    console.error("MongoDB connection error:", error.message);
   }
 };
+
+// Start server
+server.listen(PORT, () => {
+  console.log(`Secure REST & WebSocket server running on port ${PORT}`);
+});
 
 connectDB();
